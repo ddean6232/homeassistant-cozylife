@@ -230,12 +230,20 @@ evidence:
   checks after separate 90-second idle intervals; these probes opened and
   closed TCP connections without sending CozyLife protocol payloads;
 - a subsequent API check showed both target entities available, `off`, and
-  reporting current timestamps under the restored original client.
+  reporting current timestamps under the restored original client;
+- after rollback, the operator separately ran two identical Home Assistant API
+  sequences against both targets: toggle three times with short pauses, then
+  request `off`. The patio entity finished `off`; the yard entity became
+  `unavailable` during both sequences. The operator physically confirmed that
+  both loads finished off. These controls ran entirely under the restored
+  original client and are baseline evidence, not validation of the candidate.
 
 The verified backup and inert staged candidate were retained under
 `/config/.cozylife-validation/`. No second deployment is authorised in this
 maintenance window. The late recovery shows that the earlier refusal/timeouts
 were transient, but it does not validate the candidate or explain their cause.
+A later baseline control attempt also showed that TCP-port reachability alone
+does not guarantee stable entity availability under the original client.
 A future live attempt requires a new window and must repeat the scoped
 reachability and entity-availability baseline immediately before deployment.
 
