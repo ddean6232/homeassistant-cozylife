@@ -222,15 +222,22 @@ evidence:
 - the original file was restored atomically with SHA-256
   `9655edb8494ce36c6e511abec0faceef74260ea0d129870fdca8a6353c4f0f0a`,
   ownership `root:root`, and mode `0644`;
-- the rollback restart completed successfully; the final API check reported
-  Core `RUNNING`, safe mode disabled, CozyLife loaded, and both target entities
-  back in their original `unavailable` condition.
+- the rollback restart completed successfully; the initial post-rollback API
+  check reported Core `RUNNING`, safe mode disabled, CozyLife loaded, and both
+  target entities still in their original `unavailable` condition;
+- later read-only preflight under the restored original client produced three
+  successful TCP/5555 handshakes for each target, followed by two successful
+  checks after separate 90-second idle intervals; these probes opened and
+  closed TCP connections without sending CozyLife protocol payloads;
+- a subsequent API check showed both target entities available, `off`, and
+  reporting current timestamps under the restored original client.
 
 The verified backup and inert staged candidate were retained under
 `/config/.cozylife-validation/`. No second deployment is authorised in this
-maintenance window. A future live attempt requires a new window and a scoped
-preflight demonstrating that the selected devices accept TCP connections from
-Home Assistant before the candidate is deployed.
+maintenance window. The late recovery shows that the earlier refusal/timeouts
+were transient, but it does not validate the candidate or explain their cause.
+A future live attempt requires a new window and must repeat the scoped
+reachability and entity-availability baseline immediately before deployment.
 
 ## Approval gates
 
