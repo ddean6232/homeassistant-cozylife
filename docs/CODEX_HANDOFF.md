@@ -13,7 +13,7 @@ Finish and validate the focused CozyLife local-TCP reliability fix, then prepare
 - Upstream: `polaralias/homeassistant-cozylife`
 - Working branch: `fix/stateless-cozylife-tcp`
 - Draft upstream PR: `polaralias/homeassistant-cozylife#19`
-- Current implementation commit: `cad840d`
+- Initial implementation commit: `cad840d`
 
 ## User constraints
 
@@ -44,21 +44,18 @@ Archived PR #7 and commit `651b967` identified the same failure mode and used co
 
 `tests/test_tcp_client_contract.py` adds coverage for:
 
-- cleanup after an exchange;
-- retrying after a stale connection.
+- cleanup after successful and failed exchanges;
+- retrying after stale connections, failed sends, and failed responses;
+- closing sockets created by failed connection attempts;
+- fragmented response framing and unrelated sequence-number filtering;
+- negative command acknowledgements;
+- device-info discovery through the stateless exchange path.
 
-## Required next work
+## Local validation
 
-1. Review the current diff for correctness and keep the change limited to the TCP client and its tests.
-2. Add or improve tests if needed for:
-   - failed connection establishment;
-   - failed send followed by reconnect;
-   - failed response followed by reconnect;
-   - negative command acknowledgement;
-   - fragmented responses;
-   - unrelated sequence numbers;
-   - ensuring no idle socket remains after success or failure.
-3. Run the repository test command with the CI dependency versions:
+Completed on 2026-10-04 without modifying the production Home Assistant system:
+
+1. The repository test command with the CI dependency versions:
 
    ```bash
    uv run --prerelease=allow \
@@ -68,16 +65,30 @@ Archived PR #7 and commit `651b967` identified the same failure mode and used co
      python -m pytest -q
    ```
 
-4. Run `git diff --check`.
-5. Review the final diff manually.
-6. Do not deploy to HA yet. Prepare a reversible production-test plan instead:
+   Result: `34 passed, 7 warnings in 2.77s`. The warnings are upstream
+   dependency deprecations from `josepy`, `acme`, and Home Assistant's HTTP
+   component.
+
+2. `git diff --check` completed successfully.
+3. The final diff was reviewed manually against archived PR #7 / commit
+   `651b967`. The current implementation keeps the newer framing,
+   sequence-correlation, and acknowledgement behavior that the archived change
+   did not preserve.
+
+## Remaining work
+
+1. Keep PR #19 as a draft until live hardware validation is complete.
+2. Do not deploy to HA without explicit operator approval. Use a reversible
+   production-test plan:
    - identify the installed CozyLife integration files/version;
    - back up only `custom_components/cozylife`;
    - install only the tested CozyLife files;
    - restart HA only with approval;
    - monitor both switches through polling and an idle period;
    - roll back the CozyLife backup if required.
-7. Keep PR #19 as a draft until local and live validation evidence is available. Do not claim the issue is fixed based on unit tests alone.
+
+Local unit tests establish the client contract but do not prove the production
+switch-unavailability symptom is fixed.
 
 ## Definition of done for this handoff
 

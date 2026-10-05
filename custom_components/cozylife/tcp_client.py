@@ -92,15 +92,14 @@ class tcp_client:
 
         self.disconnect()
         try:
-            connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            connection.settimeout(self.timeout)
-            connection.connect((self._ip, _PORT))
+            self._connect = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._connect.settimeout(self.timeout)
+            self._connect.connect((self._ip, _PORT))
         except OSError as err:
             _LOGGER.info("Failed to open CozyLife socket for %s: %s", self._ip, err)
             self.disconnect()
             return False
 
-        self._connect = connection
         return True
 
     def _device_info(self) -> None:
@@ -188,21 +187,10 @@ class tcp_client:
         return json.dumps(frame, separators=(",", ":")).encode("utf-8") + _FRAME_TERMINATOR
 
     def _send_raw(self, packet: bytes) -> bool:
-        """Send a framed packet, reconnecting once on send failure."""
+        """Send a framed packet on the current connection."""
 
-        if not self._connect:
-            self._initSocket()
-        if not self._connect:
+        if not self._connect and not self._initSocket():
             return False
-
-        try:
-            self._connect.send(packet)
-            return True
-        except OSError:
-            self.disconnect()
-            self._initSocket()
-            if not self._connect:
-                return False
 
         try:
             self._connect.send(packet)
@@ -295,14 +283,12 @@ class tcp_client:
 
             try:
                 packet = self._encode_message(cmd, payload)
-                if not self._send_raw(packet):
-                    continue
-
-                response = self._await_matching_response(
-                    require_data=require_data
-                )
-                if response is not None:
-                    return response
+                if self._send_raw(packet):
+                    response = self._await_matching_response(
+                        require_data=require_data
+                    )
+                    if response is not None:
+                        return response
             finally:
                 self.disconnect()
 
