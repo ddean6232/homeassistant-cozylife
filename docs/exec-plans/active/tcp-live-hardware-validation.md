@@ -16,16 +16,41 @@ navigation:
 ---
 # CozyLife TCP Live Hardware Validation
 
-Status: **Approved plan — execution not authorised**
+Status: **Live validation inconclusive — rollback completed**
 
-Plan content approved by the operator on `2026-10-04`. This approval does not
-authorise SSH access, backup creation, deployment, restart, device control, or
-any other production action.
+Plan content was approved by the operator on `2026-10-04`. That approval alone
+did not authorise SSH access, backup creation, deployment, restart, device
+control, or any other production action.
 
-No step in this document is authorised for execution until the operator has
-reviewed the completed environment details, accepted the rollback procedure,
-and explicitly approved the test window. Plan approval and execution approval
-are separate gates.
+Gate 1 was authorised by the operator on `2026-10-04` for a 90-minute
+maintenance window from approximately 22:05 to 23:35 local time. Gate 1 permitted
+operator-executed read-only SSH preflight and creation of the documented
+rollback backup only. It did not authorise candidate staging, deployment,
+restart, or device control.
+
+The preflight completed and the backup was verified. Gate 1 paused before
+candidate staging because the installed `tcp_client.py` hash did not match the
+current repository history. Read-only comparison subsequently confirmed that
+the installed file exactly matches archived commit `651b967`. The candidate
+retains every TCP-client interface used by the installed integration, and the
+copied production tree compiled successfully with the candidate substituted.
+That pre-deployment hold was cleared before the later gates were authorised.
+
+Gate 2 candidate staging and Gate 3 deployment were subsequently authorised by
+the operator on `2026-10-04`. The candidate was hash-verified, installed as the
+only changed production file, and loaded by one controlled Core restart.
+
+The MVP could not reach its first control checkpoint. The two target entities
+remained in their pre-test `unavailable` condition because TCP connections to
+their stored device addresses were refused or timed out. No successful
+protocol exchange occurred, and no switch control was attempted. The original
+file was restored atomically from the verified backup, its hash was confirmed,
+and Core restarted successfully. Live hardware validation therefore remains
+pending; this execution is not evidence that the production symptom is fixed.
+
+No further production execution is authorised. Any future attempt requires a
+new maintenance window, renewed gate approvals, and confirmation that the
+target devices accept TCP connections from Home Assistant before deployment.
 
 ## Objective
 
@@ -76,7 +101,7 @@ The plan is not executable while any item is `TBD`.
 
 | Item | Required value |
 |---|---|
-| Home Assistant installation type | Supervisor-managed; confirm exact type with operator-run `ha info` during preflight |
+| Home Assistant installation type | Home Assistant OS `18.3` |
 | Home Assistant version | `2026.9.4` |
 | Non-secret target/endpoint | Supplied privately; redact from repository evidence |
 | Approved API access method | Confirmed: long-lived access token via Vaultwarden |
@@ -87,7 +112,7 @@ The plan is not executable while any item is `TBD`.
 | Backup destination outside `custom_components` | `/config/.cozylife-validation/rollback-pre-e4aa6b1` |
 | Switch A entity and physical load | Entity confirmed privately; safe to toggle |
 | Switch B entity and physical load | Entity confirmed privately; safe to toggle |
-| Maintenance window | `TBD` |
+| Maintenance window | `2026-10-04`, approximately 22:05–23:35 local time |
 | Operator available to observe physical state | Required throughout the approved window |
 
 If the access method requires a secret, agree the canonical Vaultwarden item
@@ -107,6 +132,31 @@ Subsequent operator-approved, authenticated read-only API checks confirmed:
 - the CozyLife integration owns six light entities and two switch entities;
 - both target switch entities were `unavailable` before deployment;
 - SSH port 22 is reachable for a possible out-of-band rollback path.
+
+Operator-executed preflight additionally confirmed:
+
+- Home Assistant OS `18.3`, Core `2026.9.4`, Supervisor `2026.09.3`;
+- Core was running and the system reported ready;
+- Supervisor reported the pre-existing system flag `supported: false`;
+- installed `tcp_client.py` ownership/mode was `root:root` / `0644`;
+- installed `tcp_client.py` SHA-256 was
+  `9655edb8494ce36c6e511abec0faceef74260ea0d129870fdca8a6353c4f0f0a`;
+- the rollback directory was `908.0K` and contained 30 hashed files;
+- `diff -qr` produced no differences between the installed directory and the
+  backup;
+- the backup manifest SHA-256 was
+  `5b4651c268da42f2fb22b3ad921df98a63c22d313bb4904ba8fb00f73e7281b2`.
+
+The pre-existing `supported: false` flag is recorded as an external risk and
+will not be investigated or changed as part of this focused integration test.
+
+The installed-file hash is now explained as an exact match for archived commit
+`651b967`; it is not an unknown local edit. The production manifest version is
+`2026.03.14.1904`, so the surrounding integration is older than the current
+repository. Local compatibility review found that the installed call sites use
+only client members retained by the candidate, and the copied production tree
+compiled successfully after substituting the candidate client. Only
+`tcp_client.py` remains approved for deployment.
 
 Exact entity IDs, friendly names, the private endpoint, and access metadata are
 intentionally omitted from this public repository plan.
@@ -140,6 +190,48 @@ Create a private working record during execution containing only:
 Public repository evidence must redact IP addresses, device IDs, hostnames,
 credentials, and private log context.
 
+### Execution result — 2026-10-04
+
+The approved maintenance-window attempt produced the following redacted
+evidence:
+
+- the staged candidate was owned by `root:root`, mode `0600`, and matched the
+  approved SHA-256 before deployment;
+- the live replacement was atomic, left `tcp_client.py` owned by `root:root`
+  with mode `0644`, and matched the approved candidate SHA-256;
+- the first non-interactive `ha core restart` attempt was rejected because that
+  SSH session did not have a valid Supervisor API token; Core remained running,
+  and the operator then restarted it successfully from the authenticated
+  interactive Home Assistant CLI;
+- Core returned as `RUNNING`, outside safe mode, and the CozyLife integration
+  loaded;
+- both target entities remained in the same `unavailable` condition recorded
+  before deployment;
+- a temporary runtime-only `INFO` level for
+  `custom_components.cozylife.tcp_client` captured connection refusal for two
+  stored device addresses and connection/receive timeouts for another address;
+- the temporary logger level was restored to `WARNING` after one polling
+  interval;
+- recurring `NoEntitySpecifiedError` exceptions were also observed in the
+  unchanged `light.py` polling path for duplicate switch-as-light objects; that
+  separate issue was not investigated or modified in this focused test;
+- no response framing, sequence correlation, acknowledgement, idle-boundary,
+  or control behaviour reached live execution, and neither switch was toggled;
+- the rollback trigger fired because the switches remained unavailable for
+  more than two polling intervals and the MVP could not proceed;
+- the original file was restored atomically with SHA-256
+  `9655edb8494ce36c6e511abec0faceef74260ea0d129870fdca8a6353c4f0f0a`,
+  ownership `root:root`, and mode `0644`;
+- the rollback restart completed successfully; the final API check reported
+  Core `RUNNING`, safe mode disabled, CozyLife loaded, and both target entities
+  back in their original `unavailable` condition.
+
+The verified backup and inert staged candidate were retained under
+`/config/.cozylife-validation/`. No second deployment is authorised in this
+maintenance window. A future live attempt requires a new window and a scoped
+preflight demonstrating that the selected devices accept TCP connections from
+Home Assistant before the candidate is deployed.
+
 ## Approval gates
 
 ### Gate 0 — plan content approval
@@ -149,7 +241,8 @@ rollback design only. It does not authorise execution.
 
 ### Gate 1 — preflight approval
 
-Required before any SSH access or production filesystem write:
+Completed on `2026-10-04` before SSH preflight and backup creation. Required
+conditions were:
 
 - every `TBD` is resolved;
 - both loads are confirmed safe to toggle;
@@ -163,15 +256,16 @@ Required before any SSH access or production filesystem write:
 
 ### Gate 2 — preflight and backup approval
 
-Read-only preflight may begin only after Gate 1. Stop before deployment and
-present the collected baseline and verified backup evidence. Deployment needs
-a second explicit operator approval.
+Completed on `2026-10-04` after presenting the baseline, compatibility review,
+and verified backup evidence. This authorised inert candidate staging only.
 
 ### Gate 3 — deployment approval
 
-Required immediately before replacing `tcp_client.py` and restarting Home
-Assistant. The approved candidate hash, target path, backup path, and rollback
-commands must be shown together.
+Completed on `2026-10-04` immediately before the operator replaced
+`tcp_client.py` and restarted Home Assistant. The candidate hash, target path,
+backup path, rollback triggers, and exact rollback commands were shown
+together. The subsequent validation was inconclusive and the rollback was
+completed in the same window.
 
 ## Phase 1 — read-only preflight
 
@@ -379,11 +473,15 @@ at Gate 2.
 
 ### Candidate staging
 
-From the repository root on the development machine, after replacing the
-private target placeholder locally:
+The SSH service does not expose an SCP/SFTP subsystem. Non-interactive SSH runs
+as the unprivileged operator account, so the approved staging path requires the
+account's verified passwordless `sudo`. From the repository root on the
+development machine, stage through the normal operator-authenticated SSH
+stream after replacing the private target placeholder locally:
 
 ```bash
-scp custom_components/cozylife/tcp_client.py darren_dean@<private-ssh-target>:/config/.cozylife-validation/tcp_client.e4aa6b1.py
+ssh darren_dean@<private-ssh-target> 'set -eu; test ! -e /config/.cozylife-validation/tcp_client.e4aa6b1.py; test ! -e /config/.cozylife-validation/tcp_client.e4aa6b1.py.part; sudo -n dd of=/config/.cozylife-validation/tcp_client.e4aa6b1.py.part bs=4096; sudo -n chmod 600 /config/.cozylife-validation/tcp_client.e4aa6b1.py.part; sudo -n sha256sum /config/.cozylife-validation/tcp_client.e4aa6b1.py.part' < custom_components/cozylife/tcp_client.py
+ssh darren_dean@<private-ssh-target> 'set -eu; sudo -n mv /config/.cozylife-validation/tcp_client.e4aa6b1.py.part /config/.cozylife-validation/tcp_client.e4aa6b1.py; sudo -n stat -c "%u:%g %a %n" /config/.cozylife-validation/tcp_client.e4aa6b1.py; sudo -n sha256sum /config/.cozylife-validation/tcp_client.e4aa6b1.py'
 ```
 
 Then verify remotely:
@@ -397,12 +495,17 @@ The result must be exactly
 
 ### Atomic deployment and Core restart
 
-Run only after Gate 3 approval:
+Run only after Gate 3 approval from the authenticated interactive Home
+Assistant root shell. A non-interactive `sudo ha core restart` does not inherit
+the Supervisor API token and must not be used.
 
 ```bash
-cp -p /config/custom_components/cozylife/tcp_client.py /config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp
-cp /config/.cozylife-validation/tcp_client.e4aa6b1.py /config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp
-sha256sum /config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp
+printf "%s  %s\n" "9655edb8494ce36c6e511abec0faceef74260ea0d129870fdca8a6353c4f0f0a" "/config/custom_components/cozylife/tcp_client.py" | sha256sum -c -
+printf "%s  %s\n" "9655edb8494ce36c6e511abec0faceef74260ea0d129870fdca8a6353c4f0f0a" "/config/.cozylife-validation/rollback-pre-e4aa6b1/cozylife/tcp_client.py" | sha256sum -c -
+printf "%s  %s\n" "5a55fd4f4befb07ef6c987b878e7a0b66a51af7beb2189dfe1d9b42b24c4748b" "/config/.cozylife-validation/tcp_client.e4aa6b1.py" | sha256sum -c -
+test ! -e /config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp
+install -o root -g root -m 0644 /config/.cozylife-validation/tcp_client.e4aa6b1.py /config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp
+printf "%s  %s\n" "5a55fd4f4befb07ef6c987b878e7a0b66a51af7beb2189dfe1d9b42b24c4748b" "/config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp" | sha256sum -c -
 mv /config/custom_components/cozylife/.tcp_client.py.e4aa6b1.tmp /config/custom_components/cozylife/tcp_client.py
 sha256sum /config/custom_components/cozylife/tcp_client.py
 ha core restart
@@ -419,9 +522,9 @@ copied into the evidence record.
 Run immediately when a rollback trigger occurs:
 
 ```bash
-cp -p /config/custom_components/cozylife/tcp_client.py /config/custom_components/cozylife/.tcp_client.py.rollback.tmp
-cp /config/.cozylife-validation/rollback-pre-e4aa6b1/cozylife/tcp_client.py /config/custom_components/cozylife/.tcp_client.py.rollback.tmp
-sha256sum /config/custom_components/cozylife/.tcp_client.py.rollback.tmp
+test ! -e /config/custom_components/cozylife/.tcp_client.py.rollback.tmp
+install -o root -g root -m 0644 /config/.cozylife-validation/rollback-pre-e4aa6b1/cozylife/tcp_client.py /config/custom_components/cozylife/.tcp_client.py.rollback.tmp
+printf "%s  %s\n" "9655edb8494ce36c6e511abec0faceef74260ea0d129870fdca8a6353c4f0f0a" "/config/custom_components/cozylife/.tcp_client.py.rollback.tmp" | sha256sum -c -
 mv /config/custom_components/cozylife/.tcp_client.py.rollback.tmp /config/custom_components/cozylife/tcp_client.py
 sha256sum /config/custom_components/cozylife/tcp_client.py
 ha core restart
