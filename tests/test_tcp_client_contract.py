@@ -149,3 +149,32 @@ def test_query_returns_none_and_disconnects_when_device_goes_offline() -> None:
 
     assert socket.closed is True
     assert client._connect is None
+
+
+@pytest.mark.cozylife
+def test_exchange_retries_with_fresh_socket_after_stale_connection() -> None:
+    """A failed response should be retried on a new connection."""
+
+    stale_socket = _FakeSocket([b""])
+    healthy_socket = _FakeSocket(
+        [
+            b'{"cmd":2,"pv":0,"sn":"fixed-sn","res":0,'
+            b'"msg":{"attr":[1],"data":{"1":1}}}\r\n'
+        ]
+    )
+    client = tcp_client("192.168.1.10")
+    client._connect = stale_socket
+
+    def reconnect() -> bool:
+        client._connect = healthy_socket
+        return True
+
+    with (
+        patch("custom_components.cozylife.tcp_client.get_sn", return_value="fixed-sn"),
+        patch.object(client, "_initSocket", side_effect=reconnect),
+    ):
+        assert client.query() == {"1": 1}
+
+    assert stale_socket.closed is True
+    assert healthy_socket.closed is True
+    assert client._connect is None

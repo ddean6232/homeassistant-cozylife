@@ -17,6 +17,8 @@ CMD_SET = 3
 _PORT = 5555
 _FRAME_TERMINATOR = b"\r\n"
 _MAX_RECEIVE_ATTEMPTS = 10
+_MAX_RETRIES = 2
+_RETRY_DELAY = 0.2
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +87,7 @@ class tcp_client:
         except OSError:
             pass
 
-    def _initSocket(self) -> None:
+    def _initSocket(self) -> bool:
         """Create a new TCP connection to the device."""
 
         self.disconnect()
@@ -96,9 +98,10 @@ class tcp_client:
         except OSError as err:
             _LOGGER.info("Failed to open CozyLife socket for %s: %s", self._ip, err)
             self.disconnect()
-            return
+            return False
 
         self._connect = connection
+        return True
 
     def _device_info(self) -> None:
         """Populate device metadata from the device info command."""
@@ -276,12 +279,42 @@ class tcp_client:
         *,
         require_data: bool,
     ) -> dict[str, Any] | None:
-        """Send a command and wait for its correlated response."""
+        """Send a command and wait for its correlated response.
 
-        packet = self._encode_message(cmd, payload)
-        if not self._send_raw(packet):
-            return None
-        return self._await_matching_response(require_data=require_data)
+        CozyLife devices may close an otherwise idle TCP connection without
+        notifying the client. Keep each protocol exchange stateless: close
+        the connection after the response and retry transient failures on a
+        fresh socket.
+        """
+
+        for attempt in range(_MAX_RETRIES):
+            if not self._connect and not self._initSocket():
+                if attempt < _MAX_RETRIES - 1:
+                    threading.Event().wait(_RETRY_DELAY)
+                continue
+
+            try:
+                packet = self._encode_message(cmd, payload)
+                if not self._send_raw(packet):
+                    continue
+
+                response = self._await_matching_response(
+                    require_data=require_data
+                )
+                if response is not None:
+                    return response
+            finally:
+                self.disconnect()
+
+            if attempt < _MAX_RETRIES - 1:
+                threading.Event().wait(_RETRY_DELAY)
+
+        _LOGGER.info(
+            "CozyLife exchange failed after %s attempts for %s",
+            _MAX_RETRIES,
+            self._ip,
+        )
+        return None
 
     def _only_send(self, cmd: int, payload: dict[str, Any]) -> None:
         """Send a command without waiting for a reply."""
